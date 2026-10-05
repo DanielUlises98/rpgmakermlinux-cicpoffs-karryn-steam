@@ -1259,6 +1259,11 @@ fi
 if [ -f "$npath/nw.dll" ]; then
 greenworksnwjs=$(LC_ALL=C grep -aoE -m 1 "process.versions\['nw'\] = '[0-9.]+'" "$npath/nw.dll" | head -n 1 | sed -e "s@.*= '@v@g" -e "s@'@@g")
 fi
+# A Greenworks addon that was swapped for a newer build needs the NW.js version
+# it was built for; the Steam launch option RPGM_NWJSVERSION=x.y.z %command% sets it.
+if [ -n "$RPGM_NWJSVERSION" ]; then
+greenworksnwjs="v${RPGM_NWJSVERSION#v}"
+fi
 
 # Steam passes SteamAppId when it starts the game; otherwise look it up.
 if [ -z "$SteamAppId" ]; then

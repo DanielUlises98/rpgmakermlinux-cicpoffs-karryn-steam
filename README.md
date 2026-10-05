@@ -83,8 +83,9 @@ To go back to Proton, choose a Proton version again in step 5.
 ### Status
 
 - Tested on a Steam Deck in Desktop Mode: achievements unlock and show in the Steam profile.
-- Not tested yet: the Steam overlay in Game Mode, and whether saves made under Proton carry over
-  (that's why step 1 backs them up).
+- Saves carry over: under Proton and natively the game uses the same save folder (`www/save` inside
+  the game folder), and Steam Cloud keeps syncing it. Step 1 is just a precaution.
+- Not tested yet: the Steam overlay in Game Mode.
 
 ### License
 

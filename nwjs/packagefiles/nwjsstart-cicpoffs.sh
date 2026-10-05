@@ -1203,6 +1203,9 @@ armhf"
         --reinstallmkxpz)
             REINSTALLMKXPZ=true mkxpzdownload
             ;;
+        --steamdebug)
+            steamdebug=true
+            ;;
         --steamskipgui)
             case "$arg2" in
                 true)
@@ -1241,6 +1244,65 @@ fi
 if [ "$latestnwjs" = "true" ] && [ -n "$nwjsversion" ] || [ "$latestnwjs" = "true" ] && [ -n "$NWJSPATH" ] || [ -n "$nwjsversion" ]  && [ -n "$NWJSPATH" ]; then
 echo "You can't use those arguments together --chooselatestnwjs --choosenwjsversion --nwjspath"
 exit 1;
+fi
+
+steamgreenworksfunc() {
+# Greenworks .node addons only load in the NW.js version they were built for,
+# which is the version the game ships in nw.dll.
+gwnode=$(find "$mountpath" -maxdepth 3 -name "greenworks-linux64.node" 2>/dev/null | head -n 1)
+if [ -z "$gwnode" ]; then
+if [ "$steamdebug" = "true" ]; then
+echo "[steamdebug] no greenworks-linux64.node found in $mountpath"
+fi
+return
+fi
+if [ -f "$npath/nw.dll" ]; then
+greenworksnwjs=$(LC_ALL=C grep -aoE -m 1 "process.versions\['nw'\] = '[0-9.]+'" "$npath/nw.dll" | head -n 1 | sed -e "s@.*= '@v@g" -e "s@'@@g")
+fi
+
+# Steam passes SteamAppId when it starts the game; otherwise look it up.
+if [ -z "$SteamAppId" ]; then
+if [ -s "$npath/steam_appid.txt" ]; then
+SteamAppId=$(tr -dc '0-9' < "$npath/steam_appid.txt")
+else
+gwgamefd=$(basename "$npath")
+for acf in "$(dirname "$(dirname "$npath")")"/appmanifest_*.acf; do
+if [ "$(sed -n 's/^[[:space:]]*"installdir"[[:space:]]*"\(.*\)"$/\1/p' "$acf" 2>/dev/null)" = "$gwgamefd" ]; then
+SteamAppId=$(sed -n 's/^[[:space:]]*"appid"[[:space:]]*"\([0-9]*\)"$/\1/p' "$acf")
+break
+fi
+done
+fi
+fi
+if [ -n "$SteamAppId" ]; then
+export SteamAppId
+export SteamGameId="${SteamGameId:-$SteamAppId}"
+fi
+
+if [ -n "$greenworksnwjs" ] && [ -z "$nwjsversion" ] && [ -z "$NWJSPATH" ] && [ "$latestnwjs" != "true" ]; then
+echo -e "${CYAN}Greenworks (Steam achievements) detected, using NW.js $greenworksnwjs like the original game.${NC}"
+nwjsversionfunc "$greenworksnwjs"
+if ! ls "$nwjsfm/nwjs" | grep -q -- "-$greenworksnwjs-"; then
+echo -e "${YELLOW}Could not install NW.js $greenworksnwjs, using the default version. Steam achievements will probably not work.${NC}"
+nwjsversion=""
+fi
+fi
+
+if [ "$steamdebug" = "true" ]; then
+echo "[steamdebug] greenworks addon: $gwnode"
+ls "$(dirname "$gwnode")" | grep -iE "greenworks|steam|appticket" | sed 's@^@[steamdebug]   @'
+echo "[steamdebug] game NW.js (nw.dll): ${greenworksnwjs:-unknown}"
+gwmissing=$(ldd "$gwnode" 2>&1 | grep "not found")
+echo "[steamdebug] missing libraries: ${gwmissing:-none}"
+echo "[steamdebug] SteamAppId=${SteamAppId:-unset} SteamGameId=${SteamGameId:-unset} SteamEnv=${SteamEnv:-unset}"
+if ! pgrep -x steam > /dev/null 2>&1; then
+echo "[steamdebug] the Steam client does not seem to be running"
+fi
+fi
+}
+
+if [ "$found" = "true" ]; then
+steamgreenworksfunc
 fi
 
 if [ "$useoriginalgamepackagejson" = "true" ] && [ "$custompackagejsonpath" = "true" ] ; then
@@ -1285,6 +1347,7 @@ Options:
   --uninstalltexthookerplugin     Uninstall the text hooker plugin.
   --reinstallmkxpz                Reinstall the mkxpz module.
   --steamskipgui <true|false>     Disable gui in steam.
+  --steamdebug                    Print Greenworks/Steam achievement diagnostics.
   --makeshortcut <type>           Create a shortcut for the game (type: local, desktop, menu, all).
   --enhancedprotection <true|false>
         Toggle enhanced protection mode. When enabled, the game runs in a hardened sandbox:
@@ -1396,6 +1459,9 @@ sdkvar=$(echo "$@" | awk '{print $9}')
 
 
 guirpgmakermfn() {
+if [ -n "$greenworksnwjs" ]; then
+allversionsnwjs=$(echo "$allversionsnwjs" | grep -v "^$greenworksnwjs$" | sed "1s/^/$greenworksnwjs\n/")
+fi
 if [ -d "$HOME/.config" ]; then
 configgp="$HOME/.config/rpgmaker-guiconfig.txt"
 else
@@ -1404,7 +1470,11 @@ fi
 if [ -f "$configgp" ]; then
 configgdata=$(cat "$configgp")
 yaddata "$configgdata"
+if [ -n "$greenworksnwjs" ]; then
+newversionlist="$allversionsnwjs"
+else
 newversionlist=$(echo "$allversionsnwjs" | grep -v "^$nwjsguivar$" | sed "1s/^/$nwjsguivar\n/")
+fi
 if [ -z "$newversionlist" ]; then
 newversionlist="$allversionsnwjs"
 fi
@@ -1520,6 +1590,12 @@ echo skipping gui
 else
 guirpgmakermfn
 fi
+fi
+fi
+
+if [ -n "$greenworksnwjs" ]; then
+if [ -n "$NWJSPATH" ] || [ "$latestnwjs" = "true" ] || [ "v${nwjsversion#v}" != "$greenworksnwjs" ]; then
+echo -e "${YELLOW}Warning: this game's Greenworks addon needs NW.js $greenworksnwjs, but another NW.js was chosen. Steam achievements will probably not work.${NC}"
 fi
 fi
 # exit;
@@ -1716,6 +1792,9 @@ fi
 
 
 startnw() {
+# Old NW.js only raises the open files limit to 8192, which games with many
+# images (e.g. Karryn's Prison) run out of.
+ulimit -n "$(ulimit -Hn)" 2>/dev/null
 # cd "$gamef" &
 versionnum=$(echo "$nwjsf" | sed -e 's@.*v0\.@@g' -e 's@\..*@@g')
 # echo "version $nwjsf $versionnum"
@@ -1915,7 +1994,7 @@ checkandunmount
 fi
 
 
-if [ -n "$notfound" ]; then
+if [ -n "$notfound" ] && [ -z "$engine" ]; then
 echo "Can't find any game in $npath"
 exit 1
 fi

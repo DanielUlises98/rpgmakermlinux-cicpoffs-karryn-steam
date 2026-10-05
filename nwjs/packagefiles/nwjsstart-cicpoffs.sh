@@ -1795,19 +1795,26 @@ startnw() {
 # Old NW.js only raises the open files limit to 8192, which games with many
 # images (e.g. Karryn's Prison) run out of.
 ulimit -n "$(ulimit -Hn)" 2>/dev/null
+# The steam wrapper clears LD_PRELOAD for the helper tools; give the Steam
+# overlay back to the game only. Set RPGM_NOSTEAMOVERLAY=1 to keep it off.
+nwpreload="$LD_PRELOAD"
+if [ -n "$ORIGINAL_LD_PRELOAD" ] && [ -z "$RPGM_NOSTEAMOVERLAY" ]; then
+nwpreload="$ORIGINAL_LD_PRELOAD"
+echo "Steam overlay enabled"
+fi
 # cd "$gamef" &
 versionnum=$(echo "$nwjsf" | sed -e 's@.*v0\.@@g' -e 's@\..*@@g')
 # echo "version $nwjsf $versionnum"
 echo "$nwjsf"
 if [ "$versionnum" -lt 102 ]; then
-"$nwjstestpath/nw" --ozone-platform=x11
+LD_PRELOAD="$nwpreload" "$nwjstestpath/nw" --ozone-platform=x11
 else
 if [[ "$XDG_SESSION_TYPE" == "wayland" ]]; then
 echo "wayland detected"
-"$nwjstestpath/nw" --ozone-platform=wayland
+LD_PRELOAD="$nwpreload" "$nwjstestpath/nw" --ozone-platform=wayland
 else
 echo "wayland not detected, starting in x11"
-"$nwjstestpath/nw" --ozone-platform=x11
+LD_PRELOAD="$nwpreload" "$nwjstestpath/nw" --ozone-platform=x11
 fi
 fi
 

@@ -1,0 +1,7 @@
+# Local notes and tools for the person/agents working on this fork (not published)
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+.claude/
+notes/
+deploy-to-deck.sh
